@@ -25,8 +25,16 @@ export class TokenCryptoError extends Error {
 }
 
 interface KmsClientLike {
-  encrypt(request: { name: string; plaintext: Buffer }): Promise<[{ ciphertext?: Uint8Array | string | null }]>;
-  decrypt(request: { name: string; ciphertext: Buffer }): Promise<[{ plaintext?: Uint8Array | string | null }]>;
+  encrypt(request: { name: string; plaintext: Buffer }): Promise<[EncryptResponse, unknown, unknown]>;
+  decrypt(request: { name: string; ciphertext: Buffer }): Promise<[DecryptResponse, unknown, unknown]>;
+}
+
+interface EncryptResponse {
+  ciphertext?: Uint8Array | string | null;
+}
+
+interface DecryptResponse {
+  plaintext?: Uint8Array | string | null;
 }
 
 function toBuffer(value: Uint8Array | string): Buffer {
