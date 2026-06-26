@@ -42,6 +42,7 @@
   "dependencies": {
     "@ag-ui/mastra": "^1.0.1",
     "@ai-sdk/openai": "^2.0.52",
+    "@google-cloud/kms": "^4.5.0",
     "@atproto/api": "^0.15.15",
     "@aws-sdk/client-s3": "^3.787.0",
     "@aws-sdk/s3-request-presigner": "^3.787.0",
