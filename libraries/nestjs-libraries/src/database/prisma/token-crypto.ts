@@ -7,7 +7,11 @@
  *   - POSTIZ_KMS_KEY_RESOURCE — GCP Cloud KMS symmetric key resource name (prod).
  *
  * If neither is configured the middleware passes plaintext through (dev fallback) and logs a
- * warning on first write. Ciphertext envelope: v1:<iv_b64>:<tag_b64>:<ct_b64>.
+ * warning on first write. Ciphertext envelope (5 parts):
+ *   v1:<iv_b64>:<tag_b64>:<ct_b64>:<wrapped_dek_b64>
+ * where <wrapped_dek_b64> is the random per-record 32-byte DEK wrapped by the configured KEK
+ * (GCP Cloud KMS when POSTIZ_KMS_KEY_RESOURCE is set, otherwise the software KEK from
+ * POSTIZ_TOKEN_ENCRYPTION_KEY).
  */
 
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
@@ -137,13 +141,17 @@ class TokenCrypto {
     const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
     const tag = cipher.getAuthTag();
     const wrappedDek = await this.encryptKey(dek);
-    return [
-      ENVELOPE_PREFIX,
-      iv.toString('base64'),
-      tag.toString('base64'),
-      ct.toString('base64'),
-      wrappedDek.toString('base64'),
-    ].join(':');
+    // ENVELOPE_PREFIX already ends with ':' — concatenate, don't join, or the
+    // envelope gains an empty segment (v1::...) that decrypt() rejects.
+    return (
+      ENVELOPE_PREFIX +
+      [
+        iv.toString('base64'),
+        tag.toString('base64'),
+        ct.toString('base64'),
+        wrappedDek.toString('base64'),
+      ].join(':')
+    );
   }
 
   async decrypt(envelope: string): Promise<string> {
@@ -151,10 +159,20 @@ class TokenCrypto {
       return envelope;
     }
     const parts = envelope.split(':');
-    if (parts.length !== 5) {
+    // Canonical: v1:<iv>:<tag>:<ct>:<wrappedDek> (5 parts). Also accept the
+    // legacy 6-part form v1::<iv>:<tag>:<ct>:<wrappedDek> written by a former
+    // encrypt() join bug (empty 2nd segment).
+    let ivB64: string | undefined;
+    let tagB64: string | undefined;
+    let ctB64: string | undefined;
+    let wrappedDekB64: string | undefined;
+    if (parts.length === 5) {
+      [, ivB64, tagB64, ctB64, wrappedDekB64] = parts;
+    } else if (parts.length === 6 && parts[1] === '') {
+      [, , ivB64, tagB64, ctB64, wrappedDekB64] = parts;
+    } else {
       throw new TokenCryptoError('Malformed token ciphertext envelope');
     }
-    const [, ivB64, tagB64, ctB64, wrappedDekB64] = parts;
     if (!ivB64 || !tagB64 || !ctB64 || !wrappedDekB64) {
       throw new TokenCryptoError('Malformed token ciphertext envelope');
     }

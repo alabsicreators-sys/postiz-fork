@@ -5,8 +5,11 @@ import { encryptToken, decryptToken } from './token-crypto';
 /**
  * Thin-fork patch #1 — decrypt integration tokens after reads.
  * Recursively walks result trees so included relations are also decrypted.
+ * Exported for unit testing only — not part of the public API.
  */
-async function decryptIntegrationTokens(value: unknown): Promise<unknown> {
+export async function decryptIntegrationTokens(
+  value: unknown,
+): Promise<unknown> {
   if (value === null || value === undefined) return value;
   if (Array.isArray(value)) {
     return Promise.all(value.map((v) => decryptIntegrationTokens(v)));
@@ -14,10 +17,15 @@ async function decryptIntegrationTokens(value: unknown): Promise<unknown> {
   if (typeof value === 'object') {
     const record = value as Record<string, unknown>;
     // Integration-shaped object: has token (string) and providerIdentifier (string).
-    if (typeof record.token === 'string' && typeof record.providerIdentifier === 'string') {
+    if (
+      typeof record.token === 'string' &&
+      typeof record.providerIdentifier === 'string'
+    ) {
       const [token, refreshToken] = await Promise.all([
         decryptToken(record.token),
-        typeof record.refreshToken === 'string' ? decryptToken(record.refreshToken) : record.refreshToken,
+        typeof record.refreshToken === 'string'
+          ? decryptToken(record.refreshToken)
+          : record.refreshToken,
       ]);
       return { ...record, token, refreshToken };
     }
@@ -32,7 +40,10 @@ async function decryptIntegrationTokens(value: unknown): Promise<unknown> {
 }
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor() {
     super({
       log: [
@@ -83,7 +94,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 data.create.token = await encryptToken(data.create.token);
               }
               if (typeof data.create.refreshToken === 'string') {
-                data.create.refreshToken = await encryptToken(data.create.refreshToken);
+                data.create.refreshToken = await encryptToken(
+                  data.create.refreshToken,
+                );
               }
             }
             if (data.update) {
@@ -91,7 +104,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
                 data.update.token = await encryptToken(data.update.token);
               }
               if (typeof data.update.refreshToken === 'string') {
-                data.update.refreshToken = await encryptToken(data.update.refreshToken);
+                data.update.refreshToken = await encryptToken(
+                  data.update.refreshToken,
+                );
               }
             }
           }
@@ -111,9 +126,15 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         'update',
       ]);
 
-      if (readActions.has(params.action) && result !== null && result !== undefined) {
+      if (
+        readActions.has(params.action) &&
+        result !== null &&
+        result !== undefined
+      ) {
         if (Array.isArray(result)) {
-          return Promise.all(result.map(async (r) => decryptIntegrationTokens(r)));
+          return Promise.all(
+            result.map(async (r) => decryptIntegrationTokens(r)),
+          );
         }
         return decryptIntegrationTokens(result);
       }
